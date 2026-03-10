@@ -1,0 +1,17 @@
+[package]
+name = "bmc-providers"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "BMC (Baseboard Management Controller) provider implementations"
+
+[dependencies]
+async-trait = "0.1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls", "gzip", "cookies"] }
+tokio = { version = "1", features = ["sync", "process", "time"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+chrono = "0.4"
+thiserror = "1"
+libc = "0.2"

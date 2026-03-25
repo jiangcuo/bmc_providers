@@ -224,11 +224,12 @@ impl AmiSession {
             .await
             .map_err(|e| BmcError::internal(format!("AMI read body failed for {}: {}", path, e)))?;
 
+        let truncated: String = body.chars().take(2000).collect();
         debug!(
             "AMI response for {} ({} bytes):\n{}",
             path,
             body.len(),
-            &body[..body.len().min(2000)]
+            truncated
         );
 
         if body.contains("session_expired") || body.contains("Session has been expired") {

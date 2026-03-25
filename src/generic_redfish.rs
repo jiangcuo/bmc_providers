@@ -221,11 +221,10 @@ pub(crate) async fn redfish_get_with_token(
     let status = resp.status();
     if !status.is_success() {
         let body = resp.text().await.unwrap_or_default();
+        let truncated: String = body.chars().take(500).collect();
         error!(
             "Redfish HTTP {} for {}: {}",
-            status,
-            url,
-            &body[..body.len().min(500)]
+            status, url, truncated
         );
         return Err(BmcError::internal(format!(
             "Redfish error: HTTP {} url={}",
@@ -240,11 +239,10 @@ pub(crate) async fn redfish_get_with_token(
     debug!("Redfish response from {} ({} bytes)", path, body.len());
 
     serde_json::from_str(&body).map_err(|e| {
+        let truncated: String = body.chars().take(1000).collect();
         error!(
             "Redfish JSON parse error for {}: {}. Raw body (first 1000 chars): {}",
-            url,
-            e,
-            &body[..body.len().min(1000)]
+            url, e, truncated
         );
         BmcError::internal(format!("Redfish parse error for {}: {}", url, e))
     })

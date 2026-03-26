@@ -4,6 +4,7 @@ pub mod error;
 pub mod generic_redfish;
 pub mod guoxin;
 pub mod hpe_ilo;
+pub mod huanan;
 pub mod huawei_ibmc;
 pub mod huawei_imc_old;
 pub mod inspur;
@@ -32,6 +33,7 @@ pub const BMC_TYPE_SUGON: &str = "sugon";
 pub const BMC_TYPE_NETTRIX: &str = "nettrix";
 pub const BMC_TYPE_INSPUR: &str = "inspur";
 pub const BMC_TYPE_GUOXIN: &str = "guoxin";
+pub const BMC_TYPE_HUANAN: &str = "huanan";
 pub const BMC_TYPE_UNKNOWN: &str = "unknown";
 pub const SUPPORTED_BMC_TYPES: &[&str] = &[
     BMC_TYPE_REDFISH,
@@ -47,6 +49,7 @@ pub const SUPPORTED_BMC_TYPES: &[&str] = &[
     BMC_TYPE_NETTRIX,
     BMC_TYPE_INSPUR,
     BMC_TYPE_GUOXIN,
+    BMC_TYPE_HUANAN,
 ];
 
 #[derive(Debug, Clone, Serialize)]
@@ -119,6 +122,11 @@ pub fn supported_bmc_type_descriptors() -> Vec<BmcTypeDescriptor> {
             label: "Guoxin / GOOXI BMC",
             protocol: "hybrid",
         },
+        BmcTypeDescriptor {
+            value: BMC_TYPE_HUANAN,
+            label: "Huanan BMC (SP-X HTML5)",
+            protocol: "http",
+        },
     ]
 }
 
@@ -148,6 +156,7 @@ pub fn canonical_bmc_type(bmc_type: &str) -> String {
         "nettrix" | "ningchang" | "ningchangbmc" => BMC_TYPE_NETTRIX.to_string(),
         "inspur" | "langchao" | "inspurbmc" => BMC_TYPE_INSPUR.to_string(),
         "guoxin" | "gooxi" | "gooxibmc" => BMC_TYPE_GUOXIN.to_string(),
+        "huanan" | "zakj" | "huananzhi" => BMC_TYPE_HUANAN.to_string(),
         "unknown" => BMC_TYPE_UNKNOWN.to_string(),
         _ => BMC_TYPE_REDFISH.to_string(),
     }
@@ -276,10 +285,29 @@ pub async fn detect_bmc_type(creds: &BmcCreds) -> String {
                     info!("detect_bmc_type: Guoxin BMC detected for {}", creds.host);
                     return BMC_TYPE_GUOXIN.to_string();
                 }
+                if mfr.contains("zakj") || mfr.contains("ZAKJ") || mfr.contains("Huanan") || mfr.contains("huanan") {
+                    info!("detect_bmc_type: Huanan BMC detected for {}", creds.host);
+                    return BMC_TYPE_HUANAN.to_string();
+                }
             }
         }
         info!("detect_bmc_type: Redfish works for {}", creds.host);
         return BMC_TYPE_REDFISH.to_string();
+    }
+
+    // SP-X HTML5 BMCs (Gooxi / Huanan): probe /api/session login then check FRU manufacturer
+    let gx = guoxin::GuoxinProvider;
+    if let Ok(Ok(true)) = timeout(timeout_dur, gx.test_connection(creds)).await {
+        let hn = huanan::HuananProvider;
+        if let Ok(Ok(info)) = timeout(timeout_dur, hn.get_system_info(creds)).await {
+            let mfr = info.manufacturer.as_deref().unwrap_or("");
+            if mfr.contains("zakj") || mfr.contains("ZAKJ") || mfr.contains("Huanan") {
+                info!("detect_bmc_type: Huanan SP-X BMC detected for {}", creds.host);
+                return BMC_TYPE_HUANAN.to_string();
+            }
+        }
+        info!("detect_bmc_type: Guoxin SP-X BMC detected for {}", creds.host);
+        return BMC_TYPE_GUOXIN.to_string();
     }
 
     let sugon = sugon::SugonProvider;
@@ -323,6 +351,7 @@ pub fn get_provider(bmc_type: &str) -> Box<dyn BmcProvider> {
         BMC_TYPE_NETTRIX => Box::new(nettrix::NettrixProvider),
         BMC_TYPE_INSPUR => Box::new(inspur::InspurProvider),
         BMC_TYPE_GUOXIN => Box::new(guoxin::GuoxinProvider),
+        BMC_TYPE_HUANAN => Box::new(huanan::HuananProvider),
         _ => Box::new(generic_redfish::GenericRedfishProvider),
     }
 }
@@ -374,6 +403,18 @@ mod tests {
                 get_provider(bmc_type).name(),
                 "Guoxin BMC",
                 "alias `{}` should map to Guoxin provider",
+                bmc_type
+            );
+        }
+    }
+
+    #[test]
+    fn huanan_aliases_route_to_huanan_provider() {
+        for bmc_type in ["huanan", "Huanan", "zakj", "huananzhi"] {
+            assert_eq!(
+                get_provider(bmc_type).name(),
+                "Huanan BMC",
+                "alias `{}` should map to Huanan provider",
                 bmc_type
             );
         }
